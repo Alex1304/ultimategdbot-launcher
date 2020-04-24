@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.TimeoutException;
 
 import com.github.alex1304.ultimategdbot.api.Bot;
 import com.github.alex1304.ultimategdbot.api.BotConfig;
@@ -210,7 +211,9 @@ public class SimpleBot implements Bot {
 		var discordClient = DiscordClient.builder(config.getToken())
 				.onClientResponse(ResponseFunction.emptyIfNotFound())
 				.onClientResponse(ResponseFunction.emptyOnErrorStatus(RouteMatcher.route(Routes.REACTION_CREATE), 400))
-//				.onClientResponse(request -> response -> response.timeout(config.getRestTimeout()))
+				.onClientResponse(request -> response -> response.timeout(config.getRestTimeout())
+						.onErrorResume(TimeoutException.class, e -> Mono.fromRunnable(
+								() -> LOGGER.warn("REST request timed out: {}", request))))
 //				.setRequestQueueFactory(RequestQueueFactory.backedByProcessor(
 //						() -> EmitterProcessor.create(config.getRestBufferSize(), false), FluxSink.OverflowStrategy.LATEST))
 				.setGlobalRateLimiter(NewBucketGlobalRateLimiter.create())

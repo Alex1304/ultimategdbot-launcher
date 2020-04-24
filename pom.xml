@@ -34,6 +34,7 @@
 		<developerConnection>scm:git:ssh://git@github.com/ultimategdbot/ultimategdbot-launcher.git</developerConnection>
 		<tag>HEAD</tag>
 	</scm>
+	
 	<build>
 		<plugins>
 			<plugin>
@@ -58,6 +59,9 @@
 						</goals>
 					</execution>
 				</executions>
+				<configuration>
+					<excludeScope>provided</excludeScope>
+				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -67,6 +71,36 @@
 					<tagNameFormat>v@{project.version}</tagNameFormat>
 					<goals>deploy</goals>
 				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<version>3.0.0</version>
+				<executions>
+					<execution>
+						<id>antrun-archive</id>
+						<phase>package</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<target>
+								<mkdir dir="${project.build.directory}/ultimategdbot-launcher" />
+								<copy todir="${project.build.directory}/ultimategdbot-launcher">
+									<fileset dir="${project.basedir}/runtime" />
+								</copy>
+								<copy todir="${project.build.directory}/ultimategdbot-launcher/lib">
+									<fileset dir="${project.build.directory}/dependency" />
+								</copy>
+								<copy file="${project.build.directory}/${project.artifactId}-${project.version}.jar"
+										tofile="${project.build.directory}/ultimategdbot-launcher/lib/ultimategdbot-launcher.jar" />
+								<zip basedir="${project.build.directory}/ultimategdbot-launcher"
+										destfile="${project.build.directory}/ultimategdbot-launcher.zip" />
+								<delete dir="${project.build.directory}/ultimategdbot-launcher" />
+							</target>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>
