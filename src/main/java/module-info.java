@@ -8,8 +8,14 @@ module ultimategdbot.launcher {
 	requires stores.jdk;
 	requires ultimategdbot.api;
 	
-	requires transitive com.fasterxml.jackson.core;
-	requires transitive com.fasterxml.jackson.databind;
+	requires com.fasterxml.jackson.core;
+	requires com.fasterxml.jackson.databind;
+	requires slf4j.api;
+	requires logback.core;
+	requires logback.classic;
+	
+	exports com.github.alex1304.ultimategdbot.launcher.logback to logback.core;
+	opens com.github.alex1304.ultimategdbot.launcher.logback to logback.core;
 	
 	uses PluginBootstrap;
 }

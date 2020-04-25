@@ -13,7 +13,8 @@ public class Launcher {
 	private static final Path LAUNCHER_PROPS_FILE = Path.of(".", "config", "launcher.properties");
 	private static final Path DEFAULT_PLUGINS_DIRECTORY = Path.of(".", "plugins");
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException, InterruptedException {
+		var detached = args.length > 0 && args[0].equals("--detached");
 		var launcherProps = new Properties();
 		try (var reader = Files.newBufferedReader(LAUNCHER_PROPS_FILE)) {
 			launcherProps.load(reader);
@@ -41,8 +42,14 @@ public class Launcher {
 		command.add("-m");
 		command.add("ultimategdbot.launcher/" + UltimateGDBot.class.getName());
 		System.out.println(String.join(" ", command));
-		var process = processBuilder.start();
-		System.out.println("Bot started (PID: " + process.pid() + ")");
+		if (detached) {
+			var process = processBuilder.start();
+			System.out.println("Bot started (PID: " + process.pid() + ")");
+		} else {
+			var process = processBuilder.inheritIO().start();
+			Runtime.getRuntime().addShutdownHook(new Thread(process::destroy));
+			process.waitFor();
+		}
 	}
 	
 	private static String buildModulePath(Path pluginsDirectory) throws IOException {

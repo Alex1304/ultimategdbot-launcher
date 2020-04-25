@@ -18,7 +18,6 @@ import com.github.alex1304.ultimategdbot.api.command.CommandKernel;
 import com.github.alex1304.ultimategdbot.api.database.Database;
 import com.github.alex1304.ultimategdbot.api.guildconfig.GuildConfigDao;
 import com.github.alex1304.ultimategdbot.api.guildconfig.GuildConfigurator;
-import com.github.alex1304.ultimategdbot.api.util.PropertyReader;
 
 import discord4j.core.DiscordClient;
 import discord4j.core.GatewayDiscordClient;
@@ -181,18 +180,14 @@ public class SimpleBot implements Bot {
 		
 		var guildConfigExtensions = synchronizedSet(new HashSet<Class<? extends GuildConfigDao<?>>>());
 		Flux.fromIterable(ServiceLoader.load(PluginBootstrap.class))
-				.flatMap(pluginBootstrap -> pluginBootstrap.initPluginProperties()
-						.defaultIfEmpty(PropertyReader.EMPTY)
-						.flatMap(pluginProperties -> pluginBootstrap.setup(this, pluginProperties))
+				.flatMap(pluginBootstrap -> Mono.defer(() -> pluginBootstrap.setup(this))
 						.single()
 						.doOnError(e -> LOGGER.error("Failed to setup plugin " + pluginBootstrap.getClass().getName(), e)))
 				.doOnNext(plugins::add)
 				.doOnNext(plugin -> guildConfigExtensions.addAll(plugin.getGuildConfigExtensions()))
 				.doOnNext(plugin -> cmdKernel.addProvider(plugin.getCommandProvider()))
 				.doOnNext(plugin -> LOGGER.debug("Plugin {} is providing commands: {}", plugin.getName(), plugin.getCommandProvider()))
-				.then(Mono.fromRunnable(() -> {
-					cmdKernel.start();
-				}))
+				.then(Mono.fromRunnable(cmdKernel::start))
 				.thenEmpty(Flux.fromIterable(plugins).flatMap(Plugin::onReady))
 				.then(gateway.onDisconnect())
 				.block();

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration scan="true" scanPeriod="10 seconds">
-	<turboFilter class="com.github.alex1304.ultimategdbot.core.GatewayEventFilter">
+	<turboFilter class="com.github.alex1304.ultimategdbot.launcher.logback.GatewayEventFilter">
 		<Logger>discord4j.gateway.protocol.receiver</Logger>
         <Include>READY</Include>
         <Include>RESUME</Include>
@@ -11,13 +11,6 @@
 	<logger name="reactor.netty.http.client.HttpClientConnect" level="ERROR" />
 	<logger name="reactor" level="INFO" />
 	<logger name="io.netty" level="INFO" />
-	<logger name="org.hibernate" level="INFO" />
-	<logger name="jdash" level="INFO" />
-	<logger name="com.github.alex1304.jdashevents" level="WARN" />
-	
-	<!--  Legacy  -->
-	<logger name="discord4j.dispatch" level="INFO" />
-	<logger name="discord4j.events" level="INFO" />
 
 
 	<!-- Display the logs in your console with the following format -->

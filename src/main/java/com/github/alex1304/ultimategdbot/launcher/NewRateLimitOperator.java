@@ -54,7 +54,7 @@ public class NewRateLimitOperator<T> implements Function<Publisher<T>, Publisher
         this.delayScheduler = delayScheduler;
         this.tokenChanged = ReplayProcessor.cacheLastOrDefault(capacity);
         this.tokenChangedSink = tokenChanged.sink(FluxSink.OverflowStrategy.LATEST);
-        this.tokenPublishScheduler = Schedulers.newSingle("ratelimitoperator-" + Integer.toHexString(hashCode()));
+        this.tokenPublishScheduler = Schedulers.newSingle("ratelimitoperator-" + Integer.toHexString(hashCode()), true);
     }
 
     @Override
