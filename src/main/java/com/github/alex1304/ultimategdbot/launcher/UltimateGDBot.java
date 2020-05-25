@@ -50,25 +50,6 @@ class UltimateGDBot {
 
 	private static BotConfig fromProperties(Properties properties) {
 		var propertyReader = PropertyReader.fromProperties(properties);
-		var activity = propertyReader.readOptional("activity")
-				.map(value -> {
-					if (value.isEmpty() || value.equalsIgnoreCase("none") || value.equalsIgnoreCase("null")) {
-						return null;
-					} else if (value.matches("playing:.+")) {
-						return Activity.playing(value.split(":")[1]);
-					} else if (value.matches("watching:.+")) {
-						return Activity.watching(value.split(":")[1]);
-					} else if (value.matches("listening:.+")) {
-						return Activity.listening(value.split(":")[1]);
-					} else if (value.matches("streaming:[^:]+:[^:]+")) {
-						var split = value.split(":");
-						return Activity.streaming(split[1], split[2]);
-					}
-					LOGGER.warn("activity: Expected one of: ''|'none'|'null', 'playing:<text>', 'watching:<text>', 'listening:<text>'"
-							+ " or 'streaming:<url>' in lower case. Defaulting to no activity");
-					return null;
-				})
-				.orElse(null);
 		return BotConfig.builder(propertyReader.read("token"))
 				.setCommandPrefix(propertyReader.readOptional("command_prefix").orElse(null))
 				.setFlagPrefix(propertyReader.readOptional("flag_prefix").orElse(null))
