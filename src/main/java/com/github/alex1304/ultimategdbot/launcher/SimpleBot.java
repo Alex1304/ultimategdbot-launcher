@@ -2,23 +2,30 @@ package com.github.alex1304.ultimategdbot.launcher;
 
 import static java.util.Collections.synchronizedSet;
 import static java.util.Collections.unmodifiableSet;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.UndeclaredThrowableException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 import com.github.alex1304.ultimategdbot.api.Bot;
 import com.github.alex1304.ultimategdbot.api.Plugin;
 import com.github.alex1304.ultimategdbot.api.PluginMetadata;
 import com.github.alex1304.ultimategdbot.api.service.Service;
 import com.github.alex1304.ultimategdbot.api.service.ServiceContainer;
+import com.github.alex1304.ultimategdbot.api.service.ServiceFactory;
 import com.github.alex1304.ultimategdbot.api.util.PropertyReader;
 
+import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
 import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.EventDispatcher;
@@ -36,7 +43,6 @@ import discord4j.rest.request.RequestQueueFactory;
 import discord4j.rest.request.RouteMatcher;
 import discord4j.rest.response.ResponseFunction;
 import discord4j.rest.route.Routes;
-import discord4j.rest.util.Snowflake;
 import discord4j.store.api.mapping.MappingStoreService;
 import discord4j.store.caffeine.CaffeineStoreService;
 import discord4j.store.jdk.JdkStoreService;
@@ -44,9 +50,12 @@ import reactor.core.publisher.EmitterProcessor;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.util.Logger;
 import reactor.util.Loggers;
 import reactor.util.concurrent.Queues;
+import reactor.util.function.Tuple2;
+import reactor.util.function.Tuples;
 
 /**
  * Basic implementation of a Discord bot, configured with default Discord4J
@@ -56,40 +65,41 @@ public class SimpleBot implements Bot {
 	
 	private static final Logger LOGGER = Loggers.getLogger(SimpleBot.class);
 	
-	private final Path configDir;
-	private final PropertyReader mainConfig;
+	private final Map<String, PropertyReader> configMap;
 	private final DiscordClient discordClient;
 	private final Set<PluginMetadata> plugins = synchronizedSet(new HashSet<>());
 	private final Mono<Snowflake> ownerId;
-	private final ConcurrentHashMap<String, Mono<PropertyReader>> properties = new ConcurrentHashMap<>();
 	private final ServiceContainer serviceContainer = new ServiceContainer(this);
 	private final Snowflake debugLogChannelId;
 
 	private volatile GatewayDiscordClient gateway;
 
-	private SimpleBot(Path configDir, PropertyReader mainConfig, DiscordClient discordClient) {
-		this.configDir = configDir;
-		this.mainConfig = mainConfig;
+	private SimpleBot(Map<String, PropertyReader> configMap, DiscordClient discordClient) {
+		this.configMap = configMap;
 		this.discordClient = discordClient;
 		this.ownerId = discordClient.getApplicationInfo()
 				.map(ApplicationInfoData::owner)
 				.map(UserData::id)
 				.map(Snowflake::of)
 				.cache();
-		this.debugLogChannelId = mainConfig.readOptional("debug_log_channel_id").map(Snowflake::of).orElse(null);
-		properties.put("config", Mono.just(mainConfig).cache());
+		this.debugLogChannelId = configMap.get("config")
+				.readOptional("debug_log_channel_id")
+				.map(Snowflake::of)
+				.orElse(null);
 	}
 	
 	@Override
 	public PropertyReader config() {
-		return mainConfig;
+		return configMap.get("config");
 	}
 	
 	@Override
-	public Mono<PropertyReader> extraConfig(String name) {
-		return properties.computeIfAbsent(name, k -> PropertyReader
-				.fromPropertiesFile(configDir.resolve(Path.of(name + ".properties")))
-				.cache());
+	public PropertyReader config(String name) {
+		var config = configMap.get(name);
+		if (config == null) {
+			throw new IllegalArgumentException("Config with name " + name + " not found");
+		}
+		return config;
 	}
 	
 	@Override
@@ -133,6 +143,7 @@ public class SimpleBot implements Bot {
 
 	@Override
 	public Mono<Void> start() {
+		var mainConfig = configMap.get("config");
 		gateway = discordClient.gateway()
 				.setInitialStatus(shard -> parseStatus(mainConfig))
 				.setStoreService(MappingStoreService.create()
@@ -154,39 +165,93 @@ public class SimpleBot implements Bot {
 				.block();
 		
 		return Flux.fromIterable(ServiceLoader.load(Plugin.class))
+				.collectList()
+				.doOnNext(plugins -> initServices(plugins.stream()
+						.flatMap(plugin -> plugin.requiredServices().stream())
+						.collect(toUnmodifiableSet())))
+				.flatMapMany(Flux::fromIterable)
 				.flatMap(plugin -> Mono.defer(() -> plugin.setup(this))
 						.doOnError(e -> LOGGER.error("Failed to setup plugin " + plugin.getClass().getName(), e))
-						.thenReturn(plugin))
-				.doOnNext(plugin -> {
-					var serviceQueue = new ArrayDeque<>(plugin.dependedServices());
-					while (!serviceQueue.isEmpty()) {
-						var head = serviceQueue.remove();
-						if (serviceContainer.add(head)) {
-							serviceQueue.addAll(head.dependedServices());
-						}
-					}
-				})
+						.then(Mono.defer(() -> plugin.metadata().doOnNext(plugins::add))))
 				.then(gateway.onDisconnect());
 	}
+	
+	private void initServices(Set<Class<? extends Service>> serviceClassesFromPlugins) {
+		var serviceQueue = new ArrayDeque<Class<? extends Service>>(serviceClassesFromPlugins);
+		while (!serviceQueue.isEmpty()) {
+			var serviceClass = serviceQueue.remove();
+			var factory = instantiateServiceFactory(serviceClass);
+			serviceContainer.add(factory).ifPresent(service -> {
+				LOGGER.debug("Loaded service {}", service.getName());
+				serviceQueue.addAll(service.requiredServices());
+			});
+		}
+	}
+	
+	private ServiceFactory<?> instantiateServiceFactory(Class<? extends Service> serviceClass) {
+		return configMap.get("services").readOptional(serviceClass.getName()).map(t -> {
+			try {
+				var serviceFactoryClass = Class.forName(t).asSubclass(ServiceFactory.class);
+				return serviceFactoryClass.getConstructor().newInstance();
+			} catch (ClassNotFoundException e) {
+				throw new RuntimeException(e);
+			} catch (InstantiationException | IllegalAccessException | NoSuchMethodException e) {
+				throw new AssertionError(e);
+			} catch (InvocationTargetException e) {
+				var cause = e.getCause();
+				if (cause instanceof RuntimeException) {
+					throw (RuntimeException) cause;
+				}
+				if (cause instanceof Error) {
+					throw (Error) cause;
+				}
+				throw new UndeclaredThrowableException(cause);
+			}
+		}).orElseThrow(() -> new RuntimeException("No factory defined in services.properties for " + serviceClass.getName()));
+	}
 
-	public static SimpleBot create(Path configDir, PropertyReader mainConfig) {
-		var restTimeout = mainConfig.readOptional("rest.timeout_seconds")
-				.map(Integer::parseInt)
-				.map(Duration::ofSeconds)
-				.orElse(Duration.ofMinutes(2));
-		var restBufferSize = mainConfig.readOptional("rest.buffer_size")
-				.map(Integer::parseInt)
-				.orElse(Queues.SMALL_BUFFER_SIZE);
-		var discordClient = DiscordClient.builder(mainConfig.read("token"))
-				.onClientResponse(ResponseFunction.emptyIfNotFound())
-				.onClientResponse(ResponseFunction.emptyOnErrorStatus(RouteMatcher.route(Routes.REACTION_CREATE), 400))
-				.onClientResponse(request -> response -> response.timeout(restTimeout)
-						.onErrorResume(TimeoutException.class, e -> Mono.fromRunnable(
-								() -> LOGGER.warn("REST request timed out: {}", request))))
-				.setRequestQueueFactory(RequestQueueFactory.backedByProcessor(
-						() -> EmitterProcessor.create(restBufferSize, false), FluxSink.OverflowStrategy.LATEST))
-				.build();
-		return new SimpleBot(configDir, mainConfig, discordClient);
+	public static Mono<SimpleBot> create(Path configDir) {
+		return Mono.fromCallable(() -> {
+					try (var stream = Files.list(configDir)) {
+						return stream.filter(file -> file.toString().endsWith(".properties"))
+								.collect(Collectors.toUnmodifiableList());
+					}
+				})
+				.subscribeOn(Schedulers.boundedElastic())
+				.flatMapMany(Flux::fromIterable)
+				.flatMap(file -> PropertyReader.fromPropertiesFile(file)
+						.map(props -> {
+							var filename = file.getFileName().toString();
+							var extensionLength = ".properties".length();
+							if (filename.length() > extensionLength) {
+								filename = filename.substring(0, filename.length() - extensionLength);
+							}
+							return Tuples.of(filename, props);
+						}))
+				.collect(Collectors.toMap(Tuple2::getT1, Tuple2::getT2))
+				.map(configMap -> {
+					var mainConfig = configMap.get("config");
+					if (mainConfig == null) {
+						throw new RuntimeException("The main configuration file config.properties is missing");
+					}
+					var restTimeout = mainConfig.readOptional("rest.timeout_seconds")
+							.map(Integer::parseInt)
+							.map(Duration::ofSeconds)
+							.orElse(Duration.ofMinutes(2));
+					var restBufferSize = mainConfig.readOptional("rest.buffer_size")
+							.map(Integer::parseInt)
+							.orElse(Queues.SMALL_BUFFER_SIZE);
+					var discordClient = DiscordClient.builder(mainConfig.read("token"))
+							.onClientResponse(ResponseFunction.emptyIfNotFound())
+							.onClientResponse(ResponseFunction.emptyOnErrorStatus(RouteMatcher.route(Routes.REACTION_CREATE), 400))
+							.onClientResponse(request -> response -> response.timeout(restTimeout)
+									.onErrorResume(TimeoutException.class, e -> Mono.fromRunnable(
+											() -> LOGGER.warn("REST request timed out: {}", request))))
+							.setRequestQueueFactory(RequestQueueFactory.backedByProcessor(
+									() -> EmitterProcessor.create(restBufferSize, false), FluxSink.OverflowStrategy.LATEST))
+							.build();
+					return new SimpleBot(configMap, discordClient);
+				});
 	}
 	
 	private static StatusUpdate parseStatus(PropertyReader config) {

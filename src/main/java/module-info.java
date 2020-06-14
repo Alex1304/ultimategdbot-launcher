@@ -4,7 +4,7 @@ module ultimategdbot.launcher {
 	requires com.github.benmanes.caffeine;
 	requires com.zaxxer.hikari;
 	requires jdk.unsupported;
-	requires stores.caffeine;
+	requires discord4j.store.caffeine;
 	requires discord4j.store.jdk;
 	requires ultimategdbot.api;
 	
