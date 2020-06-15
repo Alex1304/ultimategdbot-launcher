@@ -82,22 +82,17 @@ public class SimpleBot implements Bot {
 				.map(UserData::id)
 				.map(Snowflake::of)
 				.cache();
-		this.debugLogChannelId = configMap.get("config")
+		this.debugLogChannelId = config("bot")
 				.readOptional("debug_log_channel_id")
 				.map(Snowflake::of)
 				.orElse(null);
 	}
 	
 	@Override
-	public PropertyReader config() {
-		return configMap.get("config");
-	}
-	
-	@Override
 	public PropertyReader config(String name) {
 		var config = configMap.get(name);
 		if (config == null) {
-			throw new IllegalArgumentException("Config with name " + name + " not found");
+			throw new IllegalArgumentException("The configuration file " + name + ".properties is missing");
 		}
 		return config;
 	}
@@ -143,7 +138,7 @@ public class SimpleBot implements Bot {
 
 	@Override
 	public Mono<Void> start() {
-		var mainConfig = configMap.get("config");
+		var mainConfig = config("bot");
 		gateway = discordClient.gateway()
 				.setInitialStatus(shard -> parseStatus(mainConfig))
 				.setStoreService(MappingStoreService.create()
@@ -230,9 +225,9 @@ public class SimpleBot implements Bot {
 						}))
 				.collect(Collectors.toMap(Tuple2::getT1, Tuple2::getT2))
 				.map(configMap -> {
-					var mainConfig = configMap.get("config");
+					var mainConfig = configMap.get("bot");
 					if (mainConfig == null) {
-						throw new RuntimeException("The main configuration file config.properties is missing");
+						throw new RuntimeException("The configuration file bot.properties is missing");
 					}
 					var restTimeout = mainConfig.readOptional("rest.timeout_seconds")
 							.map(Integer::parseInt)

@@ -10,13 +10,16 @@ import java.util.Properties;
 
 public class Launcher {
 	
-	private static final Path LAUNCHER_PROPS_FILE = Path.of(".", "config", "launcher.properties");
+	private static final String LAUNCHER_PROPS_FILE = "launcher.properties";
+	private static final Path DEFAULT_CONFIG_DIRECTORY = Path.of(".", "config");
 	private static final Path DEFAULT_PLUGINS_DIRECTORY = Path.of(".", "plugins");
 
 	public static void main(String[] args) throws IOException, InterruptedException {
 		var detached = args.length > 0 && args[0].equals("--detached");
 		var launcherProps = new Properties();
-		try (var reader = Files.newBufferedReader(LAUNCHER_PROPS_FILE)) {
+
+		var configDirectory = Path.of(launcherProps.getProperty("configDirectory", DEFAULT_CONFIG_DIRECTORY.toString()));
+		try (var reader = Files.newBufferedReader(configDirectory.resolve(LAUNCHER_PROPS_FILE))) {
 			launcherProps.load(reader);
 		} catch (IOException e) {
 			System.err.println("[WARNING] Failed to load file " + LAUNCHER_PROPS_FILE.toString()
