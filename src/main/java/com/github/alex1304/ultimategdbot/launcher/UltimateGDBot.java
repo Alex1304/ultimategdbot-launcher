@@ -1,6 +1,7 @@
 package com.github.alex1304.ultimategdbot.launcher;
 
 import java.nio.file.Paths;
+import java.util.Locale;
 
 import com.github.alex1304.ultimategdbot.api.Bot;
 
@@ -12,6 +13,7 @@ class UltimateGDBot {
 	private static final Logger LOGGER = Loggers.getLogger(UltimateGDBot.class);
 
 	public static void main(String[] args) {
+		Locale.setDefault(Locale.ENGLISH);
 		try {
 			SimpleBot.create(Paths.get("config")).flatMap(Bot::start).block();
 		} catch (Throwable e) {
