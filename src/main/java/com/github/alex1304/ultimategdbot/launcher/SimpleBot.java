@@ -11,11 +11,13 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.github.alex1304.ultimategdbot.api.Bot;
 import com.github.alex1304.ultimategdbot.api.Plugin;
@@ -71,10 +73,11 @@ public class SimpleBot implements Bot {
 	private final Mono<Snowflake> ownerId;
 	private final ServiceContainer serviceContainer = new ServiceContainer(this);
 	private final Snowflake debugLogChannelId;
+	private final Locale defaultLocale;
 
 	private volatile GatewayDiscordClient gateway;
 
-	private SimpleBot(Map<String, PropertyReader> configMap, DiscordClient discordClient) {
+	private SimpleBot(Map<String, PropertyReader> configMap, DiscordClient discordClient, Locale defaultLocale) {
 		this.configMap = configMap;
 		this.discordClient = discordClient;
 		this.ownerId = discordClient.getApplicationInfo()
@@ -86,6 +89,7 @@ public class SimpleBot implements Bot {
 				.readOptional("debug_log_channel_id")
 				.map(Snowflake::of)
 				.orElse(null);
+		this.defaultLocale = defaultLocale;
 	}
 	
 	@Override
@@ -100,6 +104,11 @@ public class SimpleBot implements Bot {
 	@Override
 	public <S extends Service> S service(Class<S> serviceType) {
 		return serviceContainer.get(serviceType);
+	}
+
+	@Override
+	public boolean hasService(Class<? extends Service> serviceType) {
+		return serviceContainer.has(serviceType);
 	}
 	
 	@Override
@@ -137,6 +146,11 @@ public class SimpleBot implements Bot {
 	}
 
 	@Override
+	public Locale getLocale() {
+		return defaultLocale;
+	}
+
+	@Override
 	public Mono<Void> start() {
 		var mainConfig = config("bot");
 		gateway = discordClient.gateway()
@@ -161,8 +175,10 @@ public class SimpleBot implements Bot {
 		
 		return Flux.fromIterable(ServiceLoader.load(Plugin.class))
 				.collectList()
-				.doOnNext(plugins -> initServices(plugins.stream()
-						.flatMap(plugin -> plugin.requiredServices().stream())
+				.doOnNext(plugins -> initServices(
+						Stream.concat(
+								findDeclaredServices(),
+								plugins.stream().flatMap(plugin -> plugin.requiredServices().stream()))
 						.collect(toUnmodifiableSet())))
 				.flatMapMany(Flux::fromIterable)
 				.flatMap(plugin -> Mono.defer(() -> plugin.setup(this))
@@ -171,8 +187,8 @@ public class SimpleBot implements Bot {
 				.then(gateway.onDisconnect());
 	}
 	
-	private void initServices(Set<Class<? extends Service>> serviceClassesFromPlugins) {
-		var serviceQueue = new ArrayDeque<Class<? extends Service>>(serviceClassesFromPlugins);
+	private void initServices(Set<Class<? extends Service>> serviceClasses) {
+		var serviceQueue = new ArrayDeque<Class<? extends Service>>(serviceClasses);
 		while (!serviceQueue.isEmpty()) {
 			var serviceClass = serviceQueue.remove();
 			var factory = instantiateServiceFactory(serviceClass);
@@ -181,6 +197,19 @@ public class SimpleBot implements Bot {
 				serviceQueue.addAll(service.requiredServices());
 			});
 		}
+	}
+
+	private Stream<Class<? extends Service>> findDeclaredServices() {
+		return configMap.get("services").toJdkProperties()
+				.stringPropertyNames()
+				.stream()
+				.map(className -> {
+					try {
+						return Class.forName(className).asSubclass(Service.class);
+					} catch (ClassNotFoundException e) {
+						throw new RuntimeException(e); 
+					}
+				});
 	}
 	
 	private ServiceFactory<?> instantiateServiceFactory(Class<? extends Service> serviceClass) {
@@ -229,6 +258,10 @@ public class SimpleBot implements Bot {
 					if (mainConfig == null) {
 						throw new RuntimeException("The configuration file bot.properties is missing");
 					}
+					var defaultLocale = mainConfig.readOptional("default_locale")
+							.map(Locale::forLanguageTag)
+							.orElse(Locale.getDefault());
+					LOGGER.debug("Default locale: {}", defaultLocale);
 					var restTimeout = mainConfig.readOptional("rest.timeout_seconds")
 							.map(Integer::parseInt)
 							.map(Duration::ofSeconds)
@@ -245,7 +278,7 @@ public class SimpleBot implements Bot {
 							.setRequestQueueFactory(RequestQueueFactory.backedByProcessor(
 									() -> EmitterProcessor.create(restBufferSize, false), FluxSink.OverflowStrategy.LATEST))
 							.build();
-					return new SimpleBot(configMap, discordClient);
+					return new SimpleBot(configMap, discordClient, defaultLocale);
 				});
 	}
 	
