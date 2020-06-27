@@ -8,12 +8,16 @@ import com.github.alex1304.ultimategdbot.api.service.ServiceFactory;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
+import reactor.core.publisher.Mono;
+
 public class HikariDatabaseServiceFactory implements ServiceFactory<DatabaseService> {
 
 	@Override
-	public DatabaseService create(Bot bot) {
-		HikariConfig hikariCfg = new HikariConfig(bot.config("hikari").toJdkProperties());
-		return DatabaseService.create(bot, Jdbi.create(new HikariDataSource(hikariCfg)));
+	public Mono<DatabaseService> create(Bot bot) {
+		return Mono.fromCallable(() -> {
+			HikariConfig hikariCfg = new HikariConfig(bot.config("hikari").toJdkProperties());
+			return DatabaseService.create(bot, Jdbi.create(new HikariDataSource(hikariCfg)));
+		});
 	}
 
 	@Override

@@ -2,6 +2,7 @@ package com.github.alex1304.ultimategdbot.launcher;
 
 import static java.util.Collections.synchronizedSet;
 import static java.util.Collections.unmodifiableSet;
+import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.lang.reflect.InvocationTargetException;
@@ -9,21 +10,23 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayDeque;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import com.github.alex1304.ultimategdbot.api.Bot;
 import com.github.alex1304.ultimategdbot.api.Plugin;
 import com.github.alex1304.ultimategdbot.api.PluginMetadata;
 import com.github.alex1304.ultimategdbot.api.service.Service;
 import com.github.alex1304.ultimategdbot.api.service.ServiceContainer;
+import com.github.alex1304.ultimategdbot.api.service.ServiceDependant;
 import com.github.alex1304.ultimategdbot.api.service.ServiceFactory;
 import com.github.alex1304.ultimategdbot.api.util.PropertyReader;
 
@@ -118,6 +121,9 @@ public class SimpleBot implements Bot {
 
 	@Override
 	public GatewayDiscordClient gateway() {
+		if (gateway == null) {
+			throw new IllegalStateException("bot has not been started");
+		}
 		return gateway;
 	}
 
@@ -175,63 +181,74 @@ public class SimpleBot implements Bot {
 		
 		return Flux.fromIterable(ServiceLoader.load(Plugin.class))
 				.collectList()
-				.doOnNext(plugins -> initServices(
-						Stream.concat(
-								findDeclaredServices(),
-								plugins.stream().flatMap(plugin -> plugin.requiredServices().stream()))
-						.collect(toUnmodifiableSet())))
+				.flatMap(plugins -> initServices(plugins).thenReturn(plugins))
 				.flatMapMany(Flux::fromIterable)
 				.flatMap(plugin -> Mono.defer(() -> plugin.setup(this))
-						.doOnError(e -> LOGGER.error("Failed to setup plugin " + plugin.getClass().getName(), e))
+						.doOnError(e -> LOGGER.error("Failed to setup plugin " + plugin, e))
 						.then(Mono.defer(() -> plugin.metadata().doOnNext(plugins::add))))
 				.then(gateway.onDisconnect());
 	}
 	
-	private void initServices(Set<Class<? extends Service>> serviceClasses) {
-		var serviceQueue = new ArrayDeque<Class<? extends Service>>(serviceClasses);
-		while (!serviceQueue.isEmpty()) {
-			var serviceClass = serviceQueue.remove();
-			var factory = instantiateServiceFactory(serviceClass);
-			serviceContainer.add(factory).ifPresent(service -> {
-				LOGGER.debug("Loaded service {}", service.getName());
-				serviceQueue.addAll(service.requiredServices());
-			});
-		}
-	}
-
-	private Stream<Class<? extends Service>> findDeclaredServices() {
-		return configMap.get("services").toJdkProperties()
-				.stringPropertyNames()
-				.stream()
-				.map(className -> {
-					try {
-						return Class.forName(className).asSubclass(Service.class);
-					} catch (ClassNotFoundException e) {
-						throw new RuntimeException(e); 
+	private Mono<Void> initServices(List<? extends ServiceDependant> serviceDependants) {
+		var serviceFactories = getAllDeclaredServiceFactories();
+		var initialDeps = serviceDependants.stream()
+				.flatMap(sd -> sd.requiredServices().stream())
+				.collect(toUnmodifiableSet());
+		var queue = EmitterProcessor.<Class<? extends Service>>create(false);
+		var sink = queue.sink(FluxSink.OverflowStrategy.BUFFER);
+		var remaining = new AtomicInteger(initialDeps.size());
+		initialDeps.forEach(sink::next);
+		return queue.flatMap(serviceClass -> Mono.justOrEmpty(serviceFactories.get(serviceClass))
+						.switchIfEmpty(Mono.error(() -> new RuntimeException(
+								"No factory declared for required service " + serviceClass))))
+				.flatMap(factory -> serviceContainer.add(factory)
+						.doOnNext(service -> {
+							LOGGER.info("Loaded service {} via {}", service, factory);
+							var deps = service.requiredServices();
+							remaining.addAndGet(deps.size());
+							deps.forEach(sink::next);
+						})
+						.thenReturn(0))
+				.doOnNext(__ -> {
+					if (remaining.decrementAndGet() == 0) {
+						sink.complete();
 					}
-				});
+				})
+				.then();
 	}
 	
-	private ServiceFactory<?> instantiateServiceFactory(Class<? extends Service> serviceClass) {
-		return configMap.get("services").readOptional(serviceClass.getName()).map(t -> {
-			try {
-				var serviceFactoryClass = Class.forName(t).asSubclass(ServiceFactory.class);
-				return serviceFactoryClass.getConstructor().newInstance();
-			} catch (ClassNotFoundException e) {
-				throw new RuntimeException(e);
-			} catch (InstantiationException | IllegalAccessException | NoSuchMethodException e) {
-				throw new AssertionError(e);
-			} catch (InvocationTargetException e) {
-				var cause = e.getCause();
-				if (cause instanceof RuntimeException) {
-					throw (RuntimeException) cause;
-				}
-				if (cause instanceof Error) {
-					throw (Error) cause;
-				}
-				throw new UndeclaredThrowableException(cause);
+	private Map<Class<? extends Service>, ServiceFactory<?>> getAllDeclaredServiceFactories() {
+		return configMap.get("services").toJdkProperties().entrySet().stream()
+				.map(SimpleBot::resolveServiceClass)
+				.collect(toMap(Entry::getKey, Entry::getValue));
+	}
+	
+	private static Entry<Class<? extends Service>, ServiceFactory<?>> resolveServiceClass(Entry<Object, Object> serviceEntry) {
+		var serviceClassName = serviceEntry.getKey().toString();
+		var serviceFactoryClassName = serviceEntry.getValue().toString();
+		try {
+			var serviceClass = Class.forName(serviceClassName).asSubclass(Service.class);
+			var serviceFactoryClass = Class.forName(serviceFactoryClassName).asSubclass(ServiceFactory.class);
+			var serviceFactory = serviceFactoryClass.getConstructor().newInstance();
+			if (serviceFactory.serviceClass() != serviceClass) {
+				throw new RuntimeException(serviceFactoryClassName
+						+ " is incompatible for service type " + serviceClassName);
 			}
-		}).orElseThrow(() -> new RuntimeException("No factory defined in services.properties for " + serviceClass.getName()));
+			return Map.entry(serviceClass, serviceFactory);
+		} catch (ClassNotFoundException e) {
+			throw new RuntimeException(e);
+		} catch (InstantiationException | IllegalAccessException | NoSuchMethodException e) {
+			throw new AssertionError(e);
+		} catch (InvocationTargetException e) {
+			var cause = e.getCause();
+			if (cause instanceof RuntimeException) {
+				throw (RuntimeException) cause;
+			}
+			if (cause instanceof Error) {
+				throw (Error) cause;
+			}
+			throw new UndeclaredThrowableException(cause);
+		}
 	}
 
 	public static Mono<SimpleBot> create(Path configDir) {
