@@ -1,6 +1,7 @@
 import com.github.alex1304.ultimategdbot.api.Plugin;
+import com.github.alex1304.ultimategdbot.api.ServiceDeclarator;
 
-module ultimategdbot.launcher {
+open module ultimategdbot.launcher {
 	requires com.github.benmanes.caffeine;
 	requires com.zaxxer.hikari;
 	requires jdk.unsupported;
@@ -15,7 +16,7 @@ module ultimategdbot.launcher {
 	requires logback.classic;
 	
 	exports com.github.alex1304.ultimategdbot.launcher.logback to logback.core;
-	opens com.github.alex1304.ultimategdbot.launcher.logback to logback.core;
 	
 	uses Plugin;
+	uses ServiceDeclarator;
 }

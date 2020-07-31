@@ -41,9 +41,10 @@ public class Launcher {
 			command.add(modulePath);
 		}
 		command.add("-cp");
-		command.add("config");
+		command.add(configDirectory.toString());
 		command.add("-m");
 		command.add("ultimategdbot.launcher/" + UltimateGDBot.class.getName());
+		command.add(configDirectory.toString());
 		System.out.println(String.join(" ", command));
 		if (detached) {
 			var process = processBuilder.start();
