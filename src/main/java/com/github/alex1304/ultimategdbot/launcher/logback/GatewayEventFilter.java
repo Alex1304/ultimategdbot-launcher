@@ -9,7 +9,7 @@ import org.slf4j.Marker;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GatewayEventFilter extends TurboFilter {
+public final class GatewayEventFilter extends TurboFilter {
 
 	private String logger;
 	private final List<String> includedEvents = new ArrayList<>();

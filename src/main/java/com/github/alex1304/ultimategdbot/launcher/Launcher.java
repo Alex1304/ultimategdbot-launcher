@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Properties;
 
-public class Launcher {
+public final class Launcher {
 	
 	private static final String LAUNCHER_PROPS_FILE = "launcher.properties";
 	private static final Path DEFAULT_CONFIG_DIRECTORY = Path.of(".", "config");

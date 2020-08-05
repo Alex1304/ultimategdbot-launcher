@@ -5,10 +5,9 @@ import static com.github.alex1304.rdi.config.FactoryMethod.externalStaticFactory
 import static com.github.alex1304.rdi.config.FactoryMethod.staticFactory;
 import static com.github.alex1304.rdi.config.Injectable.ref;
 import static com.github.alex1304.rdi.config.Injectable.value;
-import static com.github.alex1304.ultimategdbot.api.CommonServices.DATABASE_SERVICE;
-import static com.github.alex1304.ultimategdbot.api.CommonServices.DISCORD_GATEWAY_CLIENT;
-import static com.github.alex1304.ultimategdbot.api.CommonServices.DISCORD_REST_CLIENT;
-import static com.github.alex1304.ultimategdbot.api.CommonServices.PLUGIN_METADATA_SERVICE;
+import static com.github.alex1304.ultimategdbot.api.service.CommonServices.DATABASE_SERVICE;
+import static com.github.alex1304.ultimategdbot.api.service.CommonServices.GATEWAY_DISCORD_CLIENT;
+import static com.github.alex1304.ultimategdbot.api.service.CommonServices.PLUGIN_METADATA_SERVICE;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toUnmodifiableList;
 
@@ -23,12 +22,13 @@ import java.util.concurrent.TimeoutException;
 import org.jdbi.v3.core.Jdbi;
 
 import com.github.alex1304.rdi.RdiServiceContainer;
+import com.github.alex1304.rdi.ServiceReference;
 import com.github.alex1304.rdi.config.RdiConfig;
 import com.github.alex1304.rdi.config.ServiceDescriptor;
 import com.github.alex1304.ultimategdbot.api.BotConfig;
 import com.github.alex1304.ultimategdbot.api.Plugin;
 import com.github.alex1304.ultimategdbot.api.PluginMetadata;
-import com.github.alex1304.ultimategdbot.api.ServiceDeclarator;
+import com.github.alex1304.ultimategdbot.api.service.ServiceDeclarator;
 import com.github.alex1304.ultimategdbot.api.database.DatabaseService;
 import com.github.alex1304.ultimategdbot.api.util.PropertyReader;
 import com.zaxxer.hikari.HikariConfig;
@@ -60,9 +60,10 @@ import reactor.util.concurrent.Queues;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
-public class BotSupport {
+public final class BotSupport {
 	
 	private static final Logger LOGGER = Loggers.getLogger(BotSupport.class);
+	private static final ServiceReference<DiscordClient> DISCORD_CLIENT = ServiceReference.ofType(DiscordClient.class);
 	
 	private final BotConfig botConfig;
 	private final Set<PluginMetadata> plugins = ConcurrentHashMap.newKeySet();
@@ -101,7 +102,7 @@ public class BotSupport {
 					.flatMap(plugin -> serviceContainer.getService(plugin.rootService())
 							.onErrorMap(e -> new RuntimeException("Failed to init root service for plugin " + plugin, e))
 							.then(Mono.defer(() -> plugin.metadata().doOnNext(plugins::add))))
-					.then(serviceContainer.getService(DISCORD_GATEWAY_CLIENT))
+					.then(serviceContainer.getService(GATEWAY_DISCORD_CLIENT))
 					.flatMap(GatewayDiscordClient::onDisconnect);
 		});
 	}
@@ -110,14 +111,14 @@ public class BotSupport {
 		// Register database and discord client
 		RdiConfig.Builder rdiConfigBuilder = RdiConfig.builder()
 				.registerService(initDatabaseDescriptor())
-				.registerService(ServiceDescriptor.builder(DISCORD_REST_CLIENT)
+				.registerService(ServiceDescriptor.builder(DISCORD_CLIENT)
 						.setFactoryMethod(externalStaticFactory(BotSupport.class, "createDiscordClient", DiscordClient.class,
 								value(botConfig, BotConfig.class)))
 						.build())
-				.registerService(ServiceDescriptor.builder(DISCORD_GATEWAY_CLIENT)
+				.registerService(ServiceDescriptor.builder(GATEWAY_DISCORD_CLIENT)
 						.setFactoryMethod(externalStaticFactory(BotSupport.class, "connectToGateway", Mono.class,
 								value(botConfig, BotConfig.class),
-								ref(DISCORD_REST_CLIENT)))
+								ref(DISCORD_CLIENT)))
 						.build())
 				.registerService(ServiceDescriptor.builder(PLUGIN_METADATA_SERVICE)
 						.setFactoryMethod(constructor(value(plugins, Set.class)))
