@@ -45,16 +45,13 @@ import discord4j.core.shard.MemberRequestFilter;
 import discord4j.discordjson.json.MessageData;
 import discord4j.discordjson.json.gateway.StatusUpdate;
 import discord4j.gateway.intent.IntentSet;
-import discord4j.rest.request.RequestQueueFactory;
 import discord4j.rest.request.RouteMatcher;
 import discord4j.rest.response.ResponseFunction;
 import discord4j.rest.route.Routes;
 import discord4j.store.api.mapping.MappingStoreService;
 import discord4j.store.caffeine.CaffeineStoreService;
 import discord4j.store.jdk.JdkStoreService;
-import reactor.core.publisher.EmitterProcessor;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.Logger;
@@ -153,17 +150,12 @@ public final class BotSupport {
 				.map(Integer::parseInt)
 				.map(Duration::ofSeconds)
 				.orElse(Duration.ofMinutes(2));
-		var restBufferSize = config.readOptional("rest.buffer_size")
-				.map(Integer::parseInt)
-				.orElse(Queues.SMALL_BUFFER_SIZE);
 		return DiscordClient.builder(config.read("token"))
 				.onClientResponse(ResponseFunction.emptyIfNotFound())
 				.onClientResponse(ResponseFunction.emptyOnErrorStatus(RouteMatcher.route(Routes.REACTION_CREATE), 400))
 				.onClientResponse(request -> response -> response.timeout(restTimeout)
 						.onErrorResume(TimeoutException.class, e -> Mono.fromRunnable(
 								() -> LOGGER.warn("REST request timed out: {}", request))))
-				.setRequestQueueFactory(RequestQueueFactory.backedByProcessor(
-						() -> EmitterProcessor.create(restBufferSize, false), FluxSink.OverflowStrategy.LATEST))
 				.build();
 	}
 	
