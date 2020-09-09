@@ -2,7 +2,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.github.alex1304</groupId>
 	<artifactId>ultimategdbot-launcher</artifactId>
-	<version>1.0.0</version>
+	<version>1.0.1-SNAPSHOT</version>
 	
 	<name>UltimateGDBot Launcher</name>
 	
@@ -32,7 +32,7 @@
 		<url>https://github.com/ultimategdbot/ultimategdbot-launcher/tree/master</url>
 		<connection>scm:git:git://github.com/ultimategdbot/ultimategdbot-launcher.git</connection>
 		<developerConnection>scm:git:ssh://git@github.com/ultimategdbot/ultimategdbot-launcher.git</developerConnection>
-		<tag>v1.0.0</tag>
+		<tag>HEAD</tag>
 	</scm>
 	
 	<build>
