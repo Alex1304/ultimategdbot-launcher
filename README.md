@@ -24,9 +24,19 @@ If you are compiling the bot yourself, here is how you can get the ZIP file:
  |           |
  |           +- bot.properties
  |           |
+ |           +- command.properties
+ |           |
+ |           +- emoji.properties
+ |           |
  |           +- hikari.properties
  |           |
+ |           +- interactive_menu.properties
+ |           |
  |           +- launcher.properties
+ |           |
+ |           +- localization.properties
+ |           |
+ |           +- logging.properties
  |           |
  |           +- logback.xml
  |
@@ -43,10 +53,15 @@ If you are compiling the bot yourself, here is how you can get the ZIP file:
  +- start-detached.bat
 ```
 
-- `bot.properties` - Config file for the bot (bot token, command prefix, etc)
-- `hikari.properties` - Config file for the MySQL database (host, username, password), and configuration of the HikariCP connection pool (optional).
-- `launcher.properties` - Specifies the JVM options (default nothing) and the plugins folder (default `plugins`) to launch the bot
-- `logback.xml` - Configure logging (log files and console output)
+* `bot.properties` - Config file for the bot (bot token, enabled gateway intents, etc)
+* `command.properties` - Config file for the command service (default prefix, etc)
+* `emoji.properties` - Config file for the emoji service
+* `hikari.properties` - Config file for the MySQL database (host, username, password), and configuration of the HikariCP connection pool (optional).
+* `interactive_menu.properties` - Config file for the interactive menu service
+* `launcher.properties` - Specifies the JVM options (default nothing) and the plugins folder (default `plugins`) to launch the bot
+* `localization.properties` - Config file for the localization service (available languages)
+* `logging.properties` - Config file for the in-app logging service
+* `logback.xml` - Configure loggers (log files and console output)
 
 ## Configuration
 
@@ -54,7 +69,7 @@ In the future this project will come with an interactive setup program to get yo
 
 ## Plugin installation
 
-To install a plugin, for example the [Core plugin](https://github.com/ultimategdbot/ultimategdbot-core-plugin) or the [Geometry Dash plugin](https://github.com/ultimategdbot/ultimategdbot-gd-plugin), download the ZIP file in the Releases page of each plugin you want to install, and unzip the contents in the `plugins/` directory. In the end you should only have folders in the plugins directory, each folder containing the JARs necessary for the plugin. You don't need to keep the ZIP file itself in the folder.
+To install a plugin, for example the [Core plugin](https://github.com/ultimategdbot/ultimategdbot-core-plugin) or the [Geometry Dash plugin](https://github.com/ultimategdbot/ultimategdbot-gd-plugin), download the ZIP file in the Releases page of each plugin you want to install, and unzip the contents in the `plugins/` directory. In the end you should only have folders in the plugins directory, each folder containing the JARs necessary for the plugin. You don't need to keep the ZIP file itself in the folder. You may as well make your own plugins with the [UltimateGDBot API](https://github.com/ultimategdbot/ultimategdbot).
 
 ## Running
 
@@ -68,7 +83,7 @@ To keep your bot running on a remote server, use `start-detached` script files i
 
 If you can't make your bot work, that is, if the bot spits out an error message in the output console/log file on startup and don't know how to solve, here are some indications to help fixing the issue:
 
-* `The bot could not be started. Make sure that all configuration files are present and have a valid content`. The error is self-explanatory: something is missing in `bot.properties`. Make sure all required fields are set and try running again
+* `The bot could not be started. Make sure that all configuration files are present and have a valid content`. The error is self-explanatory: something is missing in a `.properties` config file. Make sure all required fields are set and try running again
 * `Access denied for username@host (using password: YES)`. Your database credentials are wrong. Make sure they are correct in `hikari.properties`
 * `ClientException [...] 401 Unauthorized`. Your bot token is incorrect.
 

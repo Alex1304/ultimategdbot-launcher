@@ -28,8 +28,8 @@ import com.github.alex1304.rdi.config.ServiceDescriptor;
 import com.github.alex1304.ultimategdbot.api.BotConfig;
 import com.github.alex1304.ultimategdbot.api.Plugin;
 import com.github.alex1304.ultimategdbot.api.PluginMetadata;
-import com.github.alex1304.ultimategdbot.api.service.ServiceDeclarator;
 import com.github.alex1304.ultimategdbot.api.database.DatabaseService;
+import com.github.alex1304.ultimategdbot.api.service.ServiceDeclarator;
 import com.github.alex1304.ultimategdbot.api.util.PropertyReader;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -40,8 +40,11 @@ import discord4j.core.event.EventDispatcher;
 import discord4j.core.object.presence.Activity;
 import discord4j.core.object.presence.Presence;
 import discord4j.core.retriever.EntityRetrievalStrategy;
+import discord4j.core.shard.InvalidationStrategy;
+import discord4j.core.shard.MemberRequestFilter;
 import discord4j.discordjson.json.MessageData;
 import discord4j.discordjson.json.gateway.StatusUpdate;
+import discord4j.gateway.intent.IntentSet;
 import discord4j.rest.request.RequestQueueFactory;
 import discord4j.rest.request.RouteMatcher;
 import discord4j.rest.response.ResponseFunction;
@@ -182,6 +185,9 @@ public final class BotSupport {
 				.setEventDispatcher(EventDispatcher.withLatestEvents(Queues.SMALL_BUFFER_SIZE))
 				.setEntityRetrievalStrategy(EntityRetrievalStrategy.STORE)
 				.setAwaitConnections(false)
+				.setEnabledIntents(IntentSet.of(Long.parseLong(config.read("enabled_intents"))))
+				.setMemberRequestFilter(MemberRequestFilter.none())
+				.setInvalidationStrategy(InvalidationStrategy.disable())
 				.login()
 				.single();
 	}
