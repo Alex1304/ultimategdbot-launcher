@@ -183,7 +183,7 @@ public final class BotSupport {
 						}), MessageData.class)
 						.setFallback(new JdkStoreService()))
 				.setEventDispatcher(EventDispatcher.withLatestEvents(Queues.SMALL_BUFFER_SIZE))
-				.setEntityRetrievalStrategy(EntityRetrievalStrategy.STORE)
+				.setEntityRetrievalStrategy(EntityRetrievalStrategy.STORE_FALLBACK_REST)
 				.setAwaitConnections(false)
 				.setEnabledIntents(IntentSet.of(Long.parseLong(config.read("enabled_intents"))))
 				.setMemberRequestFilter(MemberRequestFilter.none())
