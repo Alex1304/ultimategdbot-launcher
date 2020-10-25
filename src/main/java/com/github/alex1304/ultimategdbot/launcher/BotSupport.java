@@ -34,23 +34,20 @@ import com.github.alex1304.ultimategdbot.api.util.PropertyReader;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
+import discord4j.common.store.Store;
+import discord4j.common.store.impl.LocalStoreLayout;
 import discord4j.core.DiscordClient;
 import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.EventDispatcher;
 import discord4j.core.object.presence.Activity;
 import discord4j.core.object.presence.Presence;
 import discord4j.core.retriever.EntityRetrievalStrategy;
-import discord4j.core.shard.InvalidationStrategy;
 import discord4j.core.shard.MemberRequestFilter;
-import discord4j.discordjson.json.MessageData;
 import discord4j.discordjson.json.gateway.StatusUpdate;
 import discord4j.gateway.intent.IntentSet;
 import discord4j.rest.request.RouteMatcher;
 import discord4j.rest.response.ResponseFunction;
 import discord4j.rest.route.Routes;
-import discord4j.store.api.mapping.MappingStoreService;
-import discord4j.store.caffeine.CaffeineStoreService;
-import discord4j.store.jdk.JdkStoreService;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -163,23 +160,12 @@ public final class BotSupport {
 		var config = botConfig.resource("bot");
 		return discordClient.gateway()
 				.setInitialStatus(shard -> parseStatus(config))
-				.setStoreService(MappingStoreService.create()
-						.setMapping(new CaffeineStoreService(builder -> {
-							var maxSize = config.readOptional("message_cache_max_size")
-									.map(Integer::parseInt)
-									.orElse(2048);
-							if (maxSize >= 1) {
-								builder.maximumSize(maxSize);
-							}
-							return builder;
-						}), MessageData.class)
-						.setFallback(new JdkStoreService()))
+				.setStore(Store.fromLayout(LocalStoreLayout.create()))
 				.setEventDispatcher(EventDispatcher.withLatestEvents(Queues.SMALL_BUFFER_SIZE))
 				.setEntityRetrievalStrategy(EntityRetrievalStrategy.STORE_FALLBACK_REST)
 				.setAwaitConnections(true)
 				.setEnabledIntents(IntentSet.of(Long.parseLong(config.read("enabled_intents"))))
 				.setMemberRequestFilter(MemberRequestFilter.none())
-				.setInvalidationStrategy(InvalidationStrategy.disable())
 				.login()
 				.single();
 	}
