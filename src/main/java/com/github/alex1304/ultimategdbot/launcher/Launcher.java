@@ -62,7 +62,7 @@ public final class Launcher {
 					.map(Path::toString)
 					.collect(toCollection(ArrayList::new));
 			paths.add("lib");
-			return String.join(":", paths);
+			return String.join(System.getProperty("path.separator"), paths);
 		}
 	}
 }
